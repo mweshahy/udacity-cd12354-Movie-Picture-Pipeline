@@ -1,0 +1,91 @@
+name: 'Frontend Continuous Deployment'
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'starter/frontend/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Lint frontend code
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+        working-directory: starter/frontend
+      - run: npm run lint
+        working-directory: starter/frontend
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Test frontend code
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: npm ci
+        working-directory: starter/frontend
+      - run: CI=true npm test
+        working-directory: starter/frontend
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build frontend code
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push docker image to Amazon ECR
+        env:
+          REPOSITORY: frontend
+          IMAGE_TAG: prod
+        run: |
+          docker build --build-arg=REACT_APP_MOVIE_API_URL=http://localhost:5000 -t ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG .
+          docker push ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG
+        working-directory: starter/frontend
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      REPOSITORY: frontend
+      IMAGE_TAG: prod
+    steps:
+      # Check out the code to the runner
+      - uses: actions/checkout@v6
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Configure kubeconfig
+        run: aws eks update-kubeconfig --name cluster --region us-east-1
+      - run: kustomize edit set image frontend=${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG
+        working-directory: starter/frontend/k8s
+      - name: Test cluster access
+        run: kubectl get nodes
+      - run: kustomize build | kubectl apply -f -
+        working-directory: starter/frontend/k8s

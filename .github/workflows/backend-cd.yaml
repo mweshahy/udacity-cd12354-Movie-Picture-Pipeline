@@ -1,0 +1,96 @@
+name: 'Backend Continuous Deployment'
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'starter/backend/**'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install pipenv
+        run: pip install pipenv
+      - name: Lint backend code
+        run: pipenv install --dev
+        working-directory: starter/backend
+      - run: pipenv run lint
+        working-directory: starter/backend
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install pipenv
+        run: pip install pipenv
+      - name: Test backend code
+        run: pipenv install
+        working-directory: starter/backend
+      - run: pipenv run test
+        working-directory: starter/backend
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    env:
+      REPOSITORY: backend
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v6
+
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build backend code
+        run: |
+          docker build --tag ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG .
+          docker push ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG
+        working-directory: starter/backend
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      REPOSITORY: backend
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      # Check out the code to the runner
+      - uses: actions/checkout@v6
+      # Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Configure kubeconfig
+        run: aws eks update-kubeconfig --name cluster --region us-east-1
+      - name: Test cluster access
+        run: kubectl get nodes
+      - run: kustomize edit set image backend=${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG
+        working-directory: starter/backend/k8s
+      - run: kustomize build | kubectl apply -f -
+        working-directory: starter/backend/k8s

@@ -1,1 +1,3 @@
 commands.txt
+setup/terraform/.terraform*
+setup/terraform/terraform*backup
