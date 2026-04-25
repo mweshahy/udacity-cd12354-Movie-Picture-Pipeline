@@ -49,7 +49,6 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
       - name: Login to Amazon ECR
         id: login-ecr
@@ -60,7 +59,7 @@ jobs:
           REPOSITORY: frontend
           IMAGE_TAG: prod
         run: |
-          docker build --build-arg=REACT_APP_MOVIE_API_URL=http://localhost:5000 -t ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG .
+          docker build --build-arg=REACT_APP_MOVIE_API_URL=http://accf28c8d558e4bdd9e4e5a034f8b224-2117804121.us-east-1.elb.amazonaws.com/ -t ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG .
           docker push ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG
         working-directory: starter/frontend
 
@@ -79,7 +78,6 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
       - name: Configure kubeconfig
         run: aws eks update-kubeconfig --name cluster --region us-east-1
