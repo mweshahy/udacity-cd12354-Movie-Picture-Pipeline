@@ -1,11 +1,11 @@
 name: 'Frontend Continuous Deployment'
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
     paths:
       - 'starter/frontend/**'
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -57,9 +57,9 @@ jobs:
       - name: Build, tag, and push docker image to Amazon ECR
         env:
           REPOSITORY: frontend
-          IMAGE_TAG: prod
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --build-arg=REACT_APP_MOVIE_API_URL=http://accf28c8d558e4bdd9e4e5a034f8b224-2117804121.us-east-1.elb.amazonaws.com/ -t ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG .
+          docker build --build-arg=REACT_APP_MOVIE_API_URL=${{ vars.REACT_APP_MOVIE_API_URL }} -t ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG .
           docker push ${{ vars.AWS_ECR_URL }}/$REPOSITORY:$IMAGE_TAG
         working-directory: starter/frontend
 
@@ -68,7 +68,7 @@ jobs:
     needs: build
     env:
       REPOSITORY: frontend
-      IMAGE_TAG: prod
+      IMAGE_TAG: ${{ github.sha }}
     steps:
       # Check out the code to the runner
       - uses: actions/checkout@v6
